@@ -1,6 +1,7 @@
 name: astrbot_plugin_botami_essential
 display_name: BotamiDragen Astrbot 拓展
-desc: BotamiDragen Astrbot 拓展插件, 提供一系列使用功能
+desc: BotamiDragen AstrBot 扩展插件
 version: v0.1.0
 author: hami
 repo: https://github.com/0x6861/astrbot_plugin_botami_essential
+astrbot_version: ">=4.26.8"
