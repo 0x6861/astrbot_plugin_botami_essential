@@ -1,7 +1,7 @@
 [project]
 name = "astrbot_plugin_botami_essential"
 version = "0.1.0"
-description = "BotamiDragen AstrBot 扩展插件"
+description = "提供计数器、群聊睡眠记录与根号历时间的 AstrBot 扩展插件"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

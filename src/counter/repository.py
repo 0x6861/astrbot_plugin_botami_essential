@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..atomic_json import write_json_atomic
 from .errors import CounterDataError
 from .models import CounterRecord
 
@@ -124,27 +123,7 @@ class CounterRepository:
                 for name, record in counters.items()
             },
         }
-        self.data_file.parent.mkdir(parents=True, exist_ok=True)
-
-        temporary_path: Path | None = None
-        try:
-            with tempfile.NamedTemporaryFile(
-                mode="w",
-                encoding="utf-8",
-                dir=self.data_file.parent,
-                prefix=f".{self.data_file.name}.",
-                suffix=".tmp",
-                delete=False,
-            ) as temporary_file:
-                json.dump(payload, temporary_file, ensure_ascii=False, indent=2)
-                temporary_file.write("\n")
-                temporary_file.flush()
-                os.fsync(temporary_file.fileno())
-                temporary_path = Path(temporary_file.name)
-            os.replace(temporary_path, self.data_file)
-        finally:
-            if temporary_path is not None and temporary_path.exists():
-                temporary_path.unlink()
+        write_json_atomic(self.data_file, payload)
 
 
 def _normalize(value: str) -> str:
