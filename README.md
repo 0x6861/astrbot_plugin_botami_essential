@@ -1,6 +1,7 @@
 # BotamiDragen AstrBot 扩展插件
 
-一个面向长期扩展的 AstrBot 多功能插件。当前提供群聊睡眠记录，并已整合
+一个面向长期扩展的 AstrBot 多功能插件。当前提供 Minecraft Java 版服务器查询、
+群聊睡眠记录，并已整合
 [`astrbot_plugin_counter`](https://github.com/0x6861/astrbot_plugin_counter)
 的计数器功能。
 
@@ -44,6 +45,27 @@
 之后按日期序数连续推进。根号年采用与公历相同的大小月和闰年规则，即四年一闰、
 百年不闰、四百年再闰。时间取服务器本地时区并显示为 `HH:mm:ss`；插件不做跨时区合并。
 
+## Minecraft Java 版服务器
+
+- `/mc add <名称> <主机[:端口]>`：向当前群添加服务器；名称包含空格时使用引号，
+  例如 `/mc add "生存服 一区" mc.example.com:25565`。
+- `/mc rm <名称>`：按名称删除当前群的服务器，名称匹配不区分大小写。
+- `/mc list`：按添加顺序列出当前群的服务器名称和原始地址，不发起网络查询。
+- `/mc`：并发查询当前群的全部服务器并输出在线状态、服务器简介和玩家信息。
+
+服务器列表按群隔离，每个群最多保存 20 台服务器，群内成员均可添加、删除和查询；
+私聊不处理 Minecraft 服务器命令。数据使用版本化 JSON 保存到插件数据目录的
+`minecraft/servers.json`。
+
+状态查询由插件在本地实现 Minecraft Java Server List Ping 协议并直接连接服务器，
+不依赖第三方 Minecraft 状态 API。未显式指定端口的域名会查询
+`_minecraft._tcp.<域名>` SRV 记录，DNS 严格依次使用 `223.5.5.5`、`223.6.6.6`、
+`1.1.1.1`；没有有效 SRV 记录时回退到默认端口 `25565`。显式端口和 IP 地址不查询 SRV。
+
+查询结果使用 `🟢` 和 `🔴` 表示在线与离线。在线人数为零时显示
+`在线玩家：(无)`；在线人数大于零但服务器未返回 `players.sample` 时，只显示在线人数，
+因为 Java 状态协议不保证提供完整玩家名单。
+
 ## 从独立 counter 插件升级
 
 1. 安装并启用本插件。
@@ -58,7 +80,8 @@
 
 ## 开发与验证
 
-计数器领域逻辑位于 `src/counter`，睡眠领域逻辑位于 `src/sleep_tracker`，共享的
+计数器领域逻辑位于 `src/counter`，睡眠领域逻辑位于 `src/sleep_tracker`，
+Minecraft 领域逻辑位于 `src/minecraft`，共享的
 原子 JSON 写入工具位于 `src/atomic_json.py`。`main.py` 只负责 AstrBot 生命周期、
 命令和消息事件协调。
 后续功能应放在独立的 `src/<feature>` 目录中，避免功能之间直接共享可变状态。

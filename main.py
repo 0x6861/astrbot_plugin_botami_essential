@@ -9,6 +9,9 @@ from .src.counter.commands import CounterCommandProcessor
 from .src.counter.presenter import format_increment_result
 from .src.counter.repository import CounterRepository
 from .src.counter.service import CounterService
+from .src.minecraft.commands import MinecraftCommandProcessor
+from .src.minecraft.repository import MinecraftRepository
+from .src.minecraft.service import MinecraftService
 from .src.sleep_tracker.presenter import format_good_morning, format_good_night
 from .src.sleep_tracker.repository import SleepRepository
 from .src.sleep_tracker.service import SleepTrackerService
@@ -18,6 +21,7 @@ PLUGIN_NAME = "astrbot_plugin_botami_essential"
 LEGACY_COUNTER_PLUGIN_NAME = "astrbot_plugin_counter"
 COUNTER_DATA_FILE_NAME = "counters.json"
 SLEEP_DATA_FILE_NAME = "sleep_records.json"
+MINECRAFT_DATA_FILE_NAME = "servers.json"
 
 
 class BotamiEssential(Star):
@@ -28,6 +32,8 @@ class BotamiEssential(Star):
         self._counter_service: CounterService | None = None
         self._counter_commands: CounterCommandProcessor | None = None
         self._sleep_service: SleepTrackerService | None = None
+        self._minecraft_service: MinecraftService | None = None
+        self._minecraft_commands: MinecraftCommandProcessor | None = None
 
     async def initialize(self) -> None:
         """初始化各功能模块。"""
@@ -69,6 +75,27 @@ class BotamiEssential(Star):
         except Exception as e:
             self.logger.exception("睡眠记录模块加载失败，原因：%s", e)
 
+        minecraft_data_file = (
+            plugin_data_dir / "minecraft" / MINECRAFT_DATA_FILE_NAME
+        )
+        try:
+            minecraft_repository = MinecraftRepository(minecraft_data_file)
+            minecraft_groups = await minecraft_repository.load()
+            self._minecraft_service = MinecraftService(
+                minecraft_repository, minecraft_groups
+            )
+            self._minecraft_commands = MinecraftCommandProcessor(
+                self._minecraft_service
+            )
+            server_count = sum(len(servers) for servers in minecraft_groups.values())
+            self.logger.info(
+                "Minecraft 模块已加载，共 %d 个群、%d 台服务器。",
+                len(minecraft_groups),
+                server_count,
+            )
+        except Exception as e:
+            self.logger.exception("Minecraft 模块加载失败，原因：%s", e)
+
     @filter.command("cnt")
     async def cnt(self, event: AstrMessageEvent):
         """计数器命令：/cnt add|del|list|addname|delname。"""
@@ -77,6 +104,30 @@ class BotamiEssential(Star):
             return
 
         response = await self._counter_commands.handle(event.message_str)
+        yield event.plain_result(response)
+
+    @filter.command("mc")
+    async def mc(self, event: AstrMessageEvent):
+        """Minecraft 命令：/mc、/mc add|rm|list。"""
+        if self._minecraft_commands is None:
+            yield event.plain_result("Minecraft 模块尚未完成初始化，请稍后重试。")
+            return
+
+        try:
+            group_id = event.get_group_id()
+        except AttributeError:
+            group_id = ""
+        if not group_id:
+            yield event.plain_result("Minecraft 服务器功能仅支持群聊。")
+            return
+
+        try:
+            response = await self._minecraft_commands.handle(
+                event.message_str, str(group_id)
+            )
+        except Exception as e:
+            self.logger.exception("处理 Minecraft 命令失败，原因：%s", e)
+            response = "Minecraft 命令处理失败，请稍后重试。"
         yield event.plain_result(response)
 
     @filter.event_message_type(filter.EventMessageType.ALL)
@@ -100,7 +151,7 @@ class BotamiEssential(Star):
             return
 
         text = (event.message_str or "").strip()
-        if not text or self._is_counter_command(text):
+        if not text or self._is_plugin_command(text):
             return
 
         if self._sleep_service is not None:
@@ -146,11 +197,18 @@ class BotamiEssential(Star):
                 await self._sleep_service.flush()
             except Exception as e:
                 self.logger.exception("睡眠模块在插件停用时保存失败，原因：%s", e)
+        if self._minecraft_service is not None:
+            try:
+                await self._minecraft_service.flush()
+            except Exception as e:
+                self.logger.exception(
+                    "Minecraft 模块在插件停用时保存失败，原因：%s", e
+                )
 
     @staticmethod
-    def _is_counter_command(text: str) -> bool:
+    def _is_plugin_command(text: str) -> bool:
         first_part = text.split(maxsplit=1)[0]
-        return first_part.removeprefix("/").casefold() == "cnt"
+        return first_part.removeprefix("/").casefold() in {"cnt", "mc"}
 
     @staticmethod
     def _sender_display_name(event: AstrMessageEvent, sender_id: str) -> str:

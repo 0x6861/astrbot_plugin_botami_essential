@@ -167,6 +167,39 @@ class PluginAdapterTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(results, [])
 
+    async def test_minecraft_commands_manage_group_scoped_servers(self) -> None:
+        added = await collect_results(
+            self.plugin.mc(
+                FakeEvent('/mc add "生存服 一区" mc.example.com:25566')
+            )
+        )
+        listed = await collect_results(self.plugin.mc(FakeEvent("/mc list")))
+        removed = await collect_results(
+            self.plugin.mc(FakeEvent('/mc rm "生存服 一区"'))
+        )
+
+        self.assertIn("已添加", added[0])
+        self.assertIn("生存服 一区 - mc.example.com:25566", listed[0])
+        self.assertIn("已删除", removed[0])
+
+    async def test_minecraft_private_command_is_rejected(self) -> None:
+        results = await collect_results(
+            self.plugin.mc(FakeEvent("/mc list", group_id=""))
+        )
+
+        self.assertEqual(results, ["Minecraft 服务器功能仅支持群聊。"])
+
+    async def test_minecraft_command_does_not_trigger_counter(self) -> None:
+        await collect_results(self.plugin.cnt(FakeEvent("/cnt add mc")))
+
+        message_results = await collect_results(
+            self.plugin.on_any_message(FakeEvent("/mc list"))
+        )
+        listed = await collect_results(self.plugin.cnt(FakeEvent("/cnt list")))
+
+        self.assertEqual(message_results, [])
+        self.assertIn("mc：0 次", listed[0])
+
 
 if __name__ == "__main__":
     unittest.main()
