@@ -200,6 +200,74 @@ class PluginAdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(message_results, [])
         self.assertIn("mc：0 次", listed[0])
 
+    async def test_food_commands_manage_group_scoped_foods(self) -> None:
+        added = await collect_results(
+            self.plugin.today_food(
+                FakeEvent('/今天吃什么 add "番茄牛腩" "牛肉 拉面"')
+            )
+        )
+        listed = await collect_results(
+            self.plugin.today_food(FakeEvent("/今天吃什么 list"))
+        )
+        recommended = await collect_results(
+            self.plugin.today_food(FakeEvent("/今天吃什么"))
+        )
+        other_group = await collect_results(
+            self.plugin.today_food(
+                FakeEvent("/今天吃什么 list", group_id="other-group")
+            )
+        )
+
+        self.assertIn("已添加食物", added[0])
+        self.assertIn("[1] 番茄牛腩", listed[0])
+        self.assertIn("[2] 牛肉 拉面", listed[0])
+        self.assertIn(recommended[0], {"今天吃 番茄牛腩 ！", "今天吃 牛肉 拉面 ！"})
+        self.assertIn("食物库为空", other_group[0])
+
+    async def test_food_private_command_is_rejected(self) -> None:
+        results = await collect_results(
+            self.plugin.today_food(FakeEvent("/今天吃什么", group_id=""))
+        )
+
+        self.assertEqual(results, ["今天吃什么功能仅支持群聊。"])
+
+    async def test_food_command_does_not_trigger_counter(self) -> None:
+        await collect_results(self.plugin.cnt(FakeEvent("/cnt add 今天吃什么")))
+
+        message_results = await collect_results(
+            self.plugin.on_any_message(FakeEvent("/今天吃什么 list"))
+        )
+        listed = await collect_results(self.plugin.cnt(FakeEvent("/cnt list")))
+
+        self.assertEqual(message_results, [])
+        self.assertIn("今天吃什么：0 次", listed[0])
+
+    async def test_food_module_initialization_failure_has_fallback(self) -> None:
+        failed_plugin = plugin_module.BotamiEssential(context=object())
+        failed_data_dir = self.plugin_data_dir / "failed-init"
+        with (
+            patch.object(
+                plugin_module.StarTools,
+                "get_data_dir",
+                return_value=failed_data_dir,
+            ),
+            patch.object(
+                plugin_module.FoodRepository,
+                "load",
+                side_effect=OSError("disk error"),
+            ),
+        ):
+            await failed_plugin.initialize()
+
+        results = await collect_results(
+            failed_plugin.today_food(FakeEvent("/今天吃什么"))
+        )
+        await failed_plugin.terminate()
+
+        self.assertEqual(
+            results, ["食物推荐模块尚未完成初始化，请稍后重试。"]
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

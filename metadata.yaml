@@ -1,6 +1,6 @@
 name: astrbot_plugin_botami_essential
 display_name: BotamiDragen Astrbot 拓展
-desc: 提供 Minecraft 服务器查询、计数器、群聊睡眠记录与根号历时间的 AstrBot 扩展插件
+desc: 提供 Minecraft 服务器查询、计数器、群聊食物推荐、睡眠记录与根号历时间的 AstrBot 扩展插件
 version: v0.1.0
 author: hami
 repo: https://github.com/0x6861/astrbot_plugin_botami_essential

@@ -9,6 +9,9 @@ from .src.counter.commands import CounterCommandProcessor
 from .src.counter.presenter import format_increment_result
 from .src.counter.repository import CounterRepository
 from .src.counter.service import CounterService
+from .src.food_recommender.commands import FoodCommandProcessor
+from .src.food_recommender.repository import FoodRepository
+from .src.food_recommender.service import FoodRecommenderService
 from .src.minecraft.commands import MinecraftCommandProcessor
 from .src.minecraft.repository import MinecraftRepository
 from .src.minecraft.service import MinecraftService
@@ -22,6 +25,7 @@ LEGACY_COUNTER_PLUGIN_NAME = "astrbot_plugin_counter"
 COUNTER_DATA_FILE_NAME = "counters.json"
 SLEEP_DATA_FILE_NAME = "sleep_records.json"
 MINECRAFT_DATA_FILE_NAME = "servers.json"
+FOOD_DATA_FILE_NAME = "foods.json"
 
 
 class BotamiEssential(Star):
@@ -34,6 +38,8 @@ class BotamiEssential(Star):
         self._sleep_service: SleepTrackerService | None = None
         self._minecraft_service: MinecraftService | None = None
         self._minecraft_commands: MinecraftCommandProcessor | None = None
+        self._food_service: FoodRecommenderService | None = None
+        self._food_commands: FoodCommandProcessor | None = None
 
     async def initialize(self) -> None:
         """初始化各功能模块。"""
@@ -96,6 +102,25 @@ class BotamiEssential(Star):
         except Exception as e:
             self.logger.exception("Minecraft 模块加载失败，原因：%s", e)
 
+        food_data_file = (
+            plugin_data_dir / "food_recommender" / FOOD_DATA_FILE_NAME
+        )
+        try:
+            food_repository = FoodRepository(food_data_file)
+            food_groups = await food_repository.load()
+            self._food_service = FoodRecommenderService(
+                food_repository, food_groups
+            )
+            self._food_commands = FoodCommandProcessor(self._food_service)
+            food_count = sum(len(foods) for foods in food_groups.values())
+            self.logger.info(
+                "食物推荐模块已加载，共 %d 个群、%d 项食物。",
+                len(food_groups),
+                food_count,
+            )
+        except Exception as e:
+            self.logger.exception("食物推荐模块加载失败，原因：%s", e)
+
     @filter.command("cnt")
     async def cnt(self, event: AstrMessageEvent):
         """计数器命令：/cnt add|del|list|addname|delname。"""
@@ -128,6 +153,30 @@ class BotamiEssential(Star):
         except Exception as e:
             self.logger.exception("处理 Minecraft 命令失败，原因：%s", e)
             response = "Minecraft 命令处理失败，请稍后重试。"
+        yield event.plain_result(response)
+
+    @filter.command("今天吃什么")
+    async def today_food(self, event: AstrMessageEvent):
+        """群聊食物推荐命令。"""
+        if self._food_commands is None:
+            yield event.plain_result("食物推荐模块尚未完成初始化，请稍后重试。")
+            return
+
+        try:
+            group_id = event.get_group_id()
+        except AttributeError:
+            group_id = ""
+        if not group_id:
+            yield event.plain_result("今天吃什么功能仅支持群聊。")
+            return
+
+        try:
+            response = await self._food_commands.handle(
+                event.message_str, str(group_id)
+            )
+        except Exception as e:
+            self.logger.exception("处理食物推荐命令失败，原因：%s", e)
+            response = "食物推荐命令处理失败，请稍后重试。"
         yield event.plain_result(response)
 
     @filter.event_message_type(filter.EventMessageType.ALL)
@@ -204,11 +253,22 @@ class BotamiEssential(Star):
                 self.logger.exception(
                     "Minecraft 模块在插件停用时保存失败，原因：%s", e
                 )
+        if self._food_service is not None:
+            try:
+                await self._food_service.flush()
+            except Exception as e:
+                self.logger.exception(
+                    "食物推荐模块在插件停用时保存失败，原因：%s", e
+                )
 
     @staticmethod
     def _is_plugin_command(text: str) -> bool:
         first_part = text.split(maxsplit=1)[0]
-        return first_part.removeprefix("/").casefold() in {"cnt", "mc"}
+        return first_part.removeprefix("/").casefold() in {
+            "cnt",
+            "mc",
+            "今天吃什么",
+        }
 
     @staticmethod
     def _sender_display_name(event: AstrMessageEvent, sender_id: str) -> str:
